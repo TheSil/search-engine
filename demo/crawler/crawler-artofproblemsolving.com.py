@@ -68,7 +68,10 @@ def curl(sub_url, c, post = None):
 
 def parse_op_name(obj):
     if isinstance(obj, ast.DotAccessor):
-        l = obj.node.value + "." + obj.identifier.value
+        if isinstance(obj.node, ast.Identifier):
+            l = obj.node.value + "." + obj.identifier.value
+        else:
+            l = parse_op_name(obj.node) + "." + obj.identifier.value
     elif isinstance(obj, ast.String):
         l = obj.value
         # no using strip here, because it can remove more than 1
@@ -184,7 +187,7 @@ def crawl_topic_page(sub_url, topic_id, c):
 
             sub_url = '/m/community/ajax.php'
             topic_page = curl(sub_url, c, post=postfields)
-            parsed = json.loads(topic_page)
+            parsed = json.loads(topic_page.decode("utf-8"))
             posts_data = parsed['response']['posts']
 
     return topic_txt
@@ -269,7 +272,7 @@ def list_category_links(category, newest, oldest, c):
 
         try:
             navi_page = curl(sub_url, c, post=postfields)
-            parsed = json.loads(navi_page)
+            parsed = json.loads(navi_page.decode("utf-8"))
 
             resp = parsed['response']
             if 'no_more_topics' in resp and resp['no_more_topics']:
@@ -279,7 +282,7 @@ def list_category_links(category, newest, oldest, c):
                 fetch_before = int(post['last_post_time'])
                 yield (category, post, None)
         except Exception as e:
-            yield (None, None, e)
+            yield (category, None, e)
 
 def get_file_path(post_id):
     directory = './tmp/' + str(post_id % DIVISIONS)
@@ -321,7 +324,7 @@ def crawl_category_topics(category, newest, oldest, extra_opt):
     succ_posts = 0
     for category, post, e in list_category_links(category, newest, oldest, c):
         if e is not None:
-            print_err("category %d" % category)
+            print_err("category %d error: %s" % (category, e))
             break
         try:
             topic_id = post['topic_id']
@@ -342,11 +345,11 @@ def crawl_category_topics(category, newest, oldest, extra_opt):
         # sleep to avoid over-frequent request.
         time.sleep(0.6)
 
-    # log crawled page number
-    page_log = open(file_prefix + ".log", "a")
-    page_log.write('category %s: %d posts successful.\n' %
-                   (category, succ_posts))
-    page_log.close()
+        # log crawled topics
+        page_log = open(file_prefix + ".log", "a")
+        page_log.write('category %d, topic_id: %s \n' %
+		               (category, post['topic_id']))
+        page_log.close()
     return 'finish'
 
 def help(arg0):
